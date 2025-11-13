@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -21,15 +22,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 
 class ManualPrintActivity : ComponentActivity() {
     private val printerHelper = BluetoothPrinterHelper()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val imageUriFromIntent = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
         setContent {
-            ManualPrintScreen(printerHelper)
+            ManualPrintScreen(printerHelper, imageUriFromIntent)
         }
     }
 
@@ -40,111 +41,70 @@ class ManualPrintActivity : ComponentActivity() {
 }
 
 @Composable
-fun ManualPrintScreen(printerHelper: BluetoothPrinterHelper) {
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
-    val imagePicker = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri: Uri? ->
-        imageUri = uri
-    }
+fun ManualPrintScreen(printerHelper: BluetoothPrinterHelper, imageUriFromIntent: Uri?) {
     val context = LocalContext.current
+    val debugLog = remember { mutableStateListOf<String>() }
+    var connectionStatus by remember { mutableStateOf("Not Connected") }
+    
+    var imageUri by remember { mutableStateOf(imageUriFromIntent) }
     val imageBitmap by remember(imageUri) {
         derivedStateOf {
-            imageUri?.let {
-                val inputStream = context.contentResolver.openInputStream(it)
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-                bitmap
-            }
+            imageUri?.let { context.contentResolver.openInputStream(it)?.use(BitmapFactory::decodeStream) }
         }
     }
 
-    var width by remember { mutableStateOf(384f) }
-    var height by remember { mutableStateOf(200f) }
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
     var darkness by remember { mutableStateOf(6f) }
     var speed by remember { mutableStateOf(3f) }
-    val debugLog = remember { mutableStateListOf<String>() }
-    var selectedDevice by remember { mutableStateOf<BluetoothDevice?>(null) }
-    var connectionStatus by remember { mutableStateOf("Not Connected") }
-    val coroutineScope = rememberCoroutineScope()
 
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> imageUri = uri }
+    
     val devicePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val device = result.data?.getParcelableExtra<BluetoothDevice>("device")
-            if (device != null) {
-                selectedDevice = device
-                coroutineScope.launch {
-                    connectionStatus = if (printerHelper.connect(device)) "Connected" else "Connection Failed"
+            result.data?.getParcelableExtra<BluetoothDevice>("device")?.let { device ->
+                connectionStatus = "Connecting..."
+                printerHelper.connect(device) { success, message ->
+                    connectionStatus = message
+                    if(success) {
+                        // Save last used printer
+                    }
                 }
             }
         }
     }
 
-    Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-        Button(onClick = { devicePickerLauncher.launch(Intent(context, BluetoothDevicePickerActivity::class.java)) }) {
-            Text("Select Printer")
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (PermissionUtils.hasBluetoothPermissions(context)) {
+            devicePickerLauncher.launch(Intent(context, BluetoothDevicePickerActivity::class.java))
+        } else {
+            Toast.makeText(context, "Bluetooth permissions are required.", Toast.LENGTH_SHORT).show()
         }
-        Text("Connection Status: $connectionStatus")
-        Button(onClick = { imagePicker.launch("image/*") }) {
-            Text("Select Image")
-        }
-        imageBitmap?.let {
-            Image(
-                bitmap = it.asImageBitmap(),
-                contentDescription = "Image Preview",
-                modifier = Modifier.fillMaxWidth().height(200.dp)
-            )
-        }
-        Button(onClick = {
-            if (imageBitmap != null && connectionStatus == "Connected") {
-                coroutineScope.launch {
-                    val commands = listOf(
-                        TsplUtils.density(darkness.toInt()),
-                        TsplUtils.speed(speed.toInt()),
-                    )
-                    commands.forEach{
-                        printerHelper.sendCommand(it)
-                        debugLog.add(it)
-                    }
-                    val bitmapCommand = TsplUtils.bitmapToTsplBytes(imageBitmap!!, width.toInt(), height.toInt(), offsetX.toInt(), offsetY.toInt())
-                    printerHelper.sendCommand(bitmapCommand)
-                    debugLog.add("BITMAP command sent")
+    }
+    
+    LazyColumn(modifier = Modifier.padding(16.dp).fillMaxSize()) {
+        item { Button(onClick = { permissionLauncher.launch(PermissionUtils.getRequiredBluetoothPermissions()) }) { Text("Select Printer") } }
+        item { Text("Status: $connectionStatus") }
+        item { Button(onClick = { imagePicker.launch("image/*") }) { Text("Select Image") } }
 
-                    val printCommand = TsplUtils.print(1)
-                    printerHelper.sendCommand(printCommand)
-                    debugLog.add(printCommand)
-                }
-            }
-        }) {
-            Text("Print One Label")
-        }
-        Button(onClick = {
-            if (connectionStatus == "Connected") {
-                coroutineScope.launch {
-                    val command = TsplUtils.gapDetect()
-                    printerHelper.sendCommand(command)
-                    debugLog.add(command)
-                }
-            }
-        }) {
-            Text("Feed (GAPDETECT)")
-        }
-        Slider(value = width, onValueChange = { width = it }, valueRange = 1f..384f)
-        Text("Width: ${width.toInt()}")
-        Slider(value = height, onValueChange = { height = it }, valueRange = 1f..1000f)
-        Text("Height: ${height.toInt()}")
-        Slider(value = offsetX, onValueChange = { offsetX = it }, valueRange = 0f..500f)
-        Text("Offset X: ${offsetX.toInt()}")
-        Slider(value = offsetY, onValueChange = { offsetY = it }, valueRange = 0f..500f)
-        Text("Offset Y: ${offsetY.toInt()}")
-        Slider(value = darkness, onValueChange = { darkness = it }, valueRange = 0f..15f)
-        Text("Darkness: ${darkness.toInt()}")
-        Slider(value = speed, onValueChange = { speed = it }, valueRange = 1f..5f)
-        Text("Speed: ${speed.toInt()}")
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(debugLog) { log ->
-                Text(log)
-            }
+        item { imageBitmap?.let { Image(bitmap = it.asImageBitmap(), "Preview", modifier = Modifier.fillMaxWidth().height(200.dp)) } }
+
+        item { Button(onClick = {
+            if (imageBitmap == null || !printerHelper.isConnected) return@Button
+            val bitmapCommand = TsplUtils.createTsplBitmapCommand(imageBitmap!!)
+            printerHelper.sendCommand(TsplUtils.getInitCommand(darkness.toInt(), speed.toInt()))
+            printerHelper.sendCommand(bitmapCommand)
+            printerHelper.sendCommand(TsplUtils.getPrintCommand())
+            printerHelper.sendCommand(TsplUtils.getFormFeedCommand())
+            debugLog.add("Sent Print Job")
+        }) { Text("Print Single Label") } }
+        
+        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getFormFeedCommand()) }) { Text("Feed (FORMFEED)") } }
+
+        item { Text("Darkness: ${darkness.toInt()}"); Slider(value = darkness, onValueChange = { darkness = it }, valueRange = 0f..15f) }
+        item { Text("Speed: ${speed.toInt()}"); Slider(value = speed, onValueChange = { speed = it }, valueRange = 1f..5f) }
+
+        item { Text("Log") }
+        items(debugLog) { log ->
+            Text(log)
         }
     }
 }
