@@ -43,7 +43,7 @@ fun PrinterControlPanelScreen(printerHelper: BluetoothPrinterHelper) {
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.getParcelableExtra<BluetoothDevice>("device")?.let { device ->
                 connectionStatus = "Connecting..."
-                printerHelper.connect(device) { success, message -> connectionStatus = message }
+                printerHelper.connect(context, device) { success, message -> connectionStatus = message }
             }
         }
     }
@@ -61,15 +61,15 @@ fun PrinterControlPanelScreen(printerHelper: BluetoothPrinterHelper) {
         item { Text("Status: $connectionStatus") }
         item { Spacer(Modifier.height(16.dp)) }
         
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getInitCommand()) }) { Text("Init Printer (Defaults)") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getFormFeedCommand()) }) { Text("FORMFEED") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getGapDetectCommand()) }) { Text("GAPDETECT") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getFeedCommand(10)) }) { Text("FEED 10") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getClsCommand()) }) { Text("CLS") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getDensityCommand(8)) }) { Text("DENSITY 8") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getSpeedCommand(4)) }) { Text("SPEED 4") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getSelfTestCommand()) }) { Text("SELFTEST") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getStatusCommand()) }) { Text("?STATUS") } }
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getVersionCommand()) }) { Text("?VERSION") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getInitCommand()) }) { Text("Init Printer (Defaults)") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getFormFeedCommand()) }) { Text("FORMFEED") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getGapDetectCommand()) }) { Text("GAPDETECT") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getFeedCommand(10)) }) { Text("FEED 10") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getClsCommand()) }) { Text("CLS") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getDensityCommand(8)) }) { Text("DENSITY 8") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getSpeedCommand(4)) }) { Text("SPEED 4") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getSelfTestCommand()) }) { Text("SELFTEST") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getStatusCommand()) }) { Text("?STATUS") } }
+        item { Button(onClick = { printerHelper.sendText(TsplUtils.getVersionCommand()) }) { Text("?VERSION") } }
     }
 }

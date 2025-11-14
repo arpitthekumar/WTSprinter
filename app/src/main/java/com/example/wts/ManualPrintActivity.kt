@@ -1,9 +1,10 @@
 package com.example.wts
 
 import android.app.Activity
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
@@ -24,13 +25,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
 class ManualPrintActivity : ComponentActivity() {
+
     private val printerHelper = BluetoothPrinterHelper()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val imageUriFromIntent = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+
         setContent {
-            ManualPrintScreen(printerHelper, imageUriFromIntent)
+            ManualPrintScreen(printerHelper, imageUriFromIntent) { 
+                val lastPrinterAddress = getLastPrinterAddress(this)
+                if (lastPrinterAddress != null && !printerHelper.isConnected) {
+                    val device = BluetoothAdapter.getDefaultAdapter()?.getRemoteDevice(lastPrinterAddress)
+                    if (device != null) {
+                        printerHelper.connect(this, device) { _,_ -> }
+                    }
+                }
+            }
         }
     }
 
@@ -38,73 +49,94 @@ class ManualPrintActivity : ComponentActivity() {
         super.onDestroy()
         printerHelper.disconnect()
     }
+    
+    private fun getLastPrinterAddress(context: Context): String? {
+        return context.getSharedPreferences("PrinterPrefs", Context.MODE_PRIVATE)
+            .getString("last_printer_address", null)
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ManualPrintScreen(printerHelper: BluetoothPrinterHelper, imageUriFromIntent: Uri?) {
+fun ManualPrintScreen(
+    printerHelper: BluetoothPrinterHelper,
+    imageUriFromIntent: Uri?,
+    onLaunch: () -> Unit
+) {
     val context = LocalContext.current
-    val debugLog = remember { mutableStateListOf<String>() }
     var connectionStatus by remember { mutableStateOf("Not Connected") }
+    val logs = remember { mutableStateListOf<String>() }
     
     var imageUri by remember { mutableStateOf(imageUriFromIntent) }
     val imageBitmap by remember(imageUri) {
         derivedStateOf {
-            imageUri?.let { context.contentResolver.openInputStream(it)?.use(BitmapFactory::decodeStream) }
+            imageUri?.let { uri ->
+                try {
+                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                } catch (_: Exception) { null }
+            }
         }
     }
 
     var darkness by remember { mutableStateOf(6f) }
-    var speed by remember { mutableStateOf(3f) }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> imageUri = uri }
-    
-    val devicePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+
+    val printerPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.getParcelableExtra<BluetoothDevice>("device")?.let { device ->
                 connectionStatus = "Connecting..."
-                printerHelper.connect(device) { success, message ->
-                    connectionStatus = message
-                    if(success) {
-                        // Save last used printer
-                    }
+                printerHelper.connect(context, device) { success, msg ->
+                    connectionStatus = msg
+                    logs.add(msg)
                 }
             }
         }
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { 
         if (PermissionUtils.hasBluetoothPermissions(context)) {
-            devicePickerLauncher.launch(Intent(context, BluetoothDevicePickerActivity::class.java))
+            printerPicker.launch(Intent(context, BluetoothDevicePickerActivity::class.java))
         } else {
-            Toast.makeText(context, "Bluetooth permissions are required.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Bluetooth permission required", Toast.LENGTH_SHORT).show()
         }
     }
     
-    LazyColumn(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-        item { Button(onClick = { permissionLauncher.launch(PermissionUtils.getRequiredBluetoothPermissions()) }) { Text("Select Printer") } }
-        item { Text("Status: $connectionStatus") }
-        item { Button(onClick = { imagePicker.launch("image/*") }) { Text("Select Image") } }
+    LaunchedEffect(Unit) { onLaunch() }
 
-        item { imageBitmap?.let { Image(bitmap = it.asImageBitmap(), "Preview", modifier = Modifier.fillMaxWidth().height(200.dp)) } }
+    Scaffold(topBar = { TopAppBar(title = { Text("Manual Print") }) }) {
+        LazyColumn(modifier = Modifier.padding(it).padding(16.dp).fillMaxSize()) {
+            item { Button(onClick = { permissionLauncher.launch(PermissionUtils.getRequiredBluetoothPermissions()) }) { Text("Select Printer") } }
+            item { Text("Status: $connectionStatus") }
+            item { Button(onClick = { imagePicker.launch("image/*") }) { Text("Select Image") } }
 
-        item { Button(onClick = {
-            if (imageBitmap == null || !printerHelper.isConnected) return@Button
-            val bitmapCommand = TsplUtils.createTsplBitmapCommand(imageBitmap!!)
-            printerHelper.sendCommand(TsplUtils.getInitCommand(darkness.toInt(), speed.toInt()))
-            printerHelper.sendCommand(bitmapCommand)
-            printerHelper.sendCommand(TsplUtils.getPrintCommand())
-            printerHelper.sendCommand(TsplUtils.getFormFeedCommand())
-            debugLog.add("Sent Print Job")
-        }) { Text("Print Single Label") } }
-        
-        item { Button(onClick = { printerHelper.sendCommand(TsplUtils.getFormFeedCommand()) }) { Text("Feed (FORMFEED)") } }
+            item { imageBitmap?.let { Image(it.asImageBitmap(), "Preview", modifier = Modifier.fillMaxWidth().height(200.dp).padding(vertical=8.dp)) } }
 
-        item { Text("Darkness: ${darkness.toInt()}"); Slider(value = darkness, onValueChange = { darkness = it }, valueRange = 0f..15f) }
-        item { Text("Speed: ${speed.toInt()}"); Slider(value = speed, onValueChange = { speed = it }, valueRange = 1f..5f) }
+            item { Text("Darkness: ${darkness.toInt()}"); Slider(value = darkness, onValueChange = { darkness = it }, valueRange = 0f..15f) }
 
-        item { Text("Log") }
-        items(debugLog) { log ->
-            Text(log)
+            item { Button(onClick = {
+                val bmp = imageBitmap ?: return@Button
+                if (!printerHelper.isConnected) return@Button
+                
+                val initCmd = TsplUtils.getInitCommand(density = darkness.toInt())
+                val bitmapCmd = TsplUtils.createTsplBitmapCommand(bmp)
+                val printCmd = TsplUtils.getPrintCommand(1)
+
+                printerHelper.sendText(initCmd) { success ->
+                    if (success) {
+                        printerHelper.printImage(bitmapCmd, printCmd) { printSuccess ->
+                            logs.add(if (printSuccess) "Print job sent." else "Failed to print image.")
+                        }
+                    } else {
+                        logs.add("Failed to initialize printer.")
+                    }
+                }
+            }) { Text("Print Single Label") } }
+
+            item { Button(onClick = { printerHelper.sendText(TsplUtils.getFormFeedCommand()) { logs.add("FORMFEED sent.") } }) { Text("Feed Label") } }
+
+            item { Spacer(Modifier.height(16.dp)); Text("Logs") }
+            items(logs) { logEntry -> Text(logEntry, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }

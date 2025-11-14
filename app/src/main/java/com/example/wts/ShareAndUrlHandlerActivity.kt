@@ -51,8 +51,8 @@ class ShareAndUrlHandlerActivity : ComponentActivity() {
             copies = data?.getQueryParameter("copies")?.toIntOrNull() ?: 1
             autoPrint = data?.getQueryParameter("auto")?.toBoolean() == true
             
-            imageUri = imageB64?.let { b64 ->
-                val imageBytes = Base64.decode(b64, Base64.DEFAULT)
+            imageUri = imageB64?.let {
+                val imageBytes = Base64.decode(it, Base64.DEFAULT)
                 val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
                 saveBitmapToCache(this, bitmap)
             }
@@ -65,12 +65,10 @@ class ShareAndUrlHandlerActivity : ComponentActivity() {
         }
 
         if (autoPrint) {
-            // Handle auto-print and close
             setContent {
                 AutoPrintAndCloseScreen(printerHelper, imageUri, copies) { finish() }
             }
         } else {
-            // Show manual/auto choice screen
             setContent {
                 ShareChoiceScreen(imageUri)
             }
@@ -150,20 +148,33 @@ fun AutoPrintAndCloseScreen(printerHelper: BluetoothPrinterHelper, imageUri: Uri
         
         status = "Connecting to printer..."
         val device = android.bluetooth.BluetoothAdapter.getDefaultAdapter().getRemoteDevice(lastPrinterAddress)
-        printerHelper.connect(device) { success, message ->
+        printerHelper.connect(context, device) { success, message ->
             if (success) {
                 status = "Printing $copies copies..."
-                CoroutineScope(Dispatchers.IO).launch {
-                    val bitmapCommand = TsplUtils.createTsplBitmapCommand(imageBitmap!!)
-                    for (i in 1..copies) {
-                        printerHelper.sendCommand(TsplUtils.getInitCommand()) // Includes CLS
-                        printerHelper.sendCommand(bitmapCommand)
-                        printerHelper.sendCommand(TsplUtils.getPrintCommand())
-                        printerHelper.sendCommand(TsplUtils.getFormFeedCommand())
+                
+                val initCmd = TsplUtils.getInitCommand()
+                val bitmapCmd = TsplUtils.createTsplBitmapCommand(imageBitmap!!)
+                val printCmd = TsplUtils.getPrintCommand(1)
+                
+                var copiesPrinted = 0
+                fun printNext() {
+                    if (copiesPrinted >= copies) {
+                        printerHelper.disconnect()
+                        onComplete()
+                        return
                     }
-                    printerHelper.disconnect()
-                    onComplete()
+                    copiesPrinted++
+                    printerHelper.sendText(initCmd) { initSuccess ->
+                        if(initSuccess) {
+                            printerHelper.printImage(bitmapCmd, printCmd) { printSuccess ->
+                                if(printSuccess) printNext() else onComplete()
+                            }
+                        } else {
+                            onComplete()
+                        }
+                    }
                 }
+                printNext()
             } else {
                 status = message
                 Toast.makeText(context, status, Toast.LENGTH_LONG).show()
