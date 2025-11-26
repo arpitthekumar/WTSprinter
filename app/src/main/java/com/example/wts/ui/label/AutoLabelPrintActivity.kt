@@ -33,8 +33,9 @@ class AutoLabelPrintActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val imageUriFromIntent = intent.data
+        val copiesFromIntent = intent.getIntExtra("copies", 1)
         setContent {
-            AutoLabelPrintScreen(imageUriFromIntent)
+            AutoLabelPrintScreen(imageUriFromIntent, copiesFromIntent)
         }
     }
 }
@@ -42,7 +43,8 @@ class AutoLabelPrintActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AutoLabelPrintScreen(
-    imageUriFromIntent: Uri?
+    imageUriFromIntent: Uri?,
+    copiesFromIntent: Int
 ) {
     val context = LocalContext.current
     val logs = remember { mutableStateListOf<String>() }
@@ -57,7 +59,7 @@ fun AutoLabelPrintScreen(
             }
         }
     }
-    var copies by remember { mutableStateOf("1") }
+    var copies by remember { mutableStateOf(copiesFromIntent.toString()) }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> imageUri = uri }
 
