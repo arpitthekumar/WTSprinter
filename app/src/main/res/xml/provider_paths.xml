@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <cache-path name="shared_images" path="images/"/>
+    <external-path
+        name="external_files"
+        path="." />
+    <!-- This authorizes sharing files from the root of the cache directory -->
+    <cache-path
+        name="shared_images"
+        path="." />
 </paths>

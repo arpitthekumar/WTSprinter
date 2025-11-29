@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -34,7 +36,7 @@ class ReceiptPrintActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val imageUriFromIntent = intent.data
-
+        
         setContent {
             ReceiptPrintScreen(imageUriFromIntent)
         }
@@ -48,14 +50,18 @@ fun ReceiptPrintScreen(
 ) {
     val context = LocalContext.current
     val logs = remember { mutableStateListOf<String>() }
-    
+
     var imageUri by remember { mutableStateOf(imageUriFromIntent) }
-    val imageBitmap by remember(imageUri) {
-        derivedStateOf {
-            imageUri?.let { uri ->
-                try {
-                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
-                } catch (_: Exception) { null }
+
+    val imageBitmap by produceState<Bitmap?>(initialValue = null, imageUri) {
+        value = imageUri?.let { uri ->
+            try {
+                context.contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
             }
         }
     }
@@ -70,16 +76,16 @@ fun ReceiptPrintScreen(
         }
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { 
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (PermissionUtils.hasBluetoothPermissions(context)) {
             printerPicker.launch(Intent(context, BluetoothDevicePickerActivity::class.java))
         } else {
             Toast.makeText(context, "Bluetooth permission required", Toast.LENGTH_SHORT).show()
         }
     }
-    
+
     Scaffold(topBar = { TopAppBar(
-        title = { Text("Print Receipt") },
+        title = { Text("Print Receipt from Image") },
         actions = { PrinterStatusIcon() }
     ) }) {
         LazyColumn(modifier = Modifier.padding(it).padding(16.dp).fillMaxSize()) {
@@ -95,7 +101,7 @@ fun ReceiptPrintScreen(
 
                 val resizedBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true)
                 val imageCmd = EscPosUtils.createImageCommand(resizedBitmap)
-                
+
                 AppBluetoothManager.printerHelper.sendBytes(imageCmd) { success ->
                     logs.add(if (success) "Print job sent." else "Failed to print image.")
                 }

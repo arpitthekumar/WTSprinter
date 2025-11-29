@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.wts.ui.common.PrinterStatusIcon
 import com.example.wts.ui.label.LabelActivity
-import com.example.wts.ui.receipt.ReceiptPrintActivity
+import com.example.wts.ui.receipt.ReceiptActivity
 
 class PrintChoiceActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,9 +55,8 @@ fun PrintChoiceScreen(imageUri: Uri?) {
             }
             Spacer(modifier = Modifier.height(16.dp))
             Button(modifier = Modifier.fillMaxWidth(), onClick = {
-                val intent = Intent(context, ReceiptPrintActivity::class.java).apply {
-                    data = imageUri
-                }
+                // This is the corrected line to launch the receipt selection screen
+                val intent = Intent(context, ReceiptActivity::class.java)
                 context.startActivity(intent)
             }) {
                 Text("Print as Receipt (ESC/POS)")

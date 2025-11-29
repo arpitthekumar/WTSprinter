@@ -27,27 +27,29 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Share-Menu Intent Filter -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
-            </intent-filter>
-            <!-- PWA Deep Link Intent Filter -->
+        </activity>
+
+        <!-- The new, single dispatcher for all wts:// deep links -->
+        <activity
+            android:name=".ui.deeplink.DeepLinkActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="wts" android:host="print" />
+                <data android:scheme="wts" />
             </intent-filter>
         </activity>
-        
+
         <activity android:name=".ui.choice.PrintChoiceActivity" />
         <activity android:name=".ui.label.LabelActivity" />
         <activity android:name=".ui.label.ManualLabelPrintActivity" />
         <activity android:name=".ui.label.AutoLabelPrintActivity" />
         <activity android:name=".ui.receipt.ReceiptPrintActivity" />
+        <activity android:name=".ui.receipt.EditableReceiptActivity" />
         <activity android:name=".ui.settings.PrinterControlPanelActivity" />
+        <activity android:name=".ui.receipt.ReceiptActivity"/>
 
         <activity android:name=".bluetooth.BluetoothDevicePickerActivity" android:theme="@style/Theme.AppCompat.Dialog"/>
 
