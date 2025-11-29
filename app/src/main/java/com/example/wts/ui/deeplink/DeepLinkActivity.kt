@@ -54,7 +54,10 @@ class DeepLinkActivity : ComponentActivity() {
         val imageB64Encoded = data.getQueryParameter("image")
 
         if (imageB64Encoded != null) {
-            val imageB64 = URLDecoder.decode(imageB64Encoded, "UTF-8")
+
+            // 🔥 DO NOT URL DECODE BASE64
+            val imageB64 = imageB64Encoded
+
             val copies = data.getQueryParameter("copies")?.toIntOrNull() ?: 1
             val type = data.getQueryParameter("type")
 
@@ -78,8 +81,13 @@ class DeepLinkActivity : ComponentActivity() {
                     putExtra("copies", copies)
                 }
             }
+
+// 🔥 NEW — make sure activity also gets Base64
+            intent.putExtra("image_base64", imageB64)
+
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(intent)
+
         } else {
             val intent = Intent(this, ReceiptActivity::class.java)
             startActivity(intent)
