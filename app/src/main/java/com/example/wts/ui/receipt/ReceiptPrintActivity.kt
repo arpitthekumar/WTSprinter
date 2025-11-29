@@ -37,7 +37,6 @@ class ReceiptPrintActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 🔥 FIXED — always get URI (from setData() or base64)
         val imageUriFromIntent = getImageUriFromDeepLink()
 
         setContent {
@@ -45,12 +44,13 @@ class ReceiptPrintActivity : ComponentActivity() {
         }
     }
 
-    // 🔥 FUNCTION TO FIX DEEP LINK PREVIEW PROBLEM
+    // Get deep-link image URI (from FileProvider or base64)
     private fun getImageUriFromDeepLink(): Uri? {
-        // 1) if URI already exists (FileProvider), use it
+
+        // (1) If deep link passes setData(FileProvider URI), use it
         intent.data?.let { return it }
 
-        // 2) else fallback to base64
+        // (2) Else fallback to raw base64
         val base64 = intent.getStringExtra("image_base64") ?: return null
 
         return try {
@@ -70,19 +70,32 @@ class ReceiptPrintActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReceiptPrintScreen(
-    imageUriFromIntent: Uri?,
-) {
+fun ReceiptPrintScreen(imageUriFromIntent: Uri?) {
+
     val context = LocalContext.current
     val logs = remember { mutableStateListOf<String>() }
 
     var imageUri by remember { mutableStateOf(imageUriFromIntent) }
 
+    // Load + upscale bitmap for clear preview + downscale to 384px for printing
     val imageBitmap by produceState<Bitmap?>(initialValue = null, imageUri) {
         value = imageUri?.let { uri ->
             try {
-                context.contentResolver.openInputStream(uri)?.use {
-                    BitmapFactory.decodeStream(it)
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+
+                    val original = BitmapFactory.decodeStream(stream)
+                        .copy(Bitmap.Config.ARGB_8888, true) // sharpen
+
+                    val targetWidth = 384 // thermal printer width
+                    val targetHeight = (targetWidth.toFloat() / original.width * original.height).toInt()
+
+                    // high quality filtered resize
+                    Bitmap.createScaledBitmap(
+                        original,
+                        targetWidth,
+                        targetHeight,
+                        true
+                    )
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -91,9 +104,10 @@ fun ReceiptPrintScreen(
         }
     }
 
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        imageUri = uri
-    }
+    val imagePicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            imageUri = uri
+        }
 
     val printerPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -113,32 +127,35 @@ fun ReceiptPrintScreen(
             }
         }
 
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text("Print Receipt from Image") },
-            actions = { PrinterStatusIcon() }
-        )
-    }) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Print Receipt") },
+                actions = { PrinterStatusIcon() }
+            )
+        }
+    ) {
         LazyColumn(
             modifier = Modifier
                 .padding(it)
                 .padding(16.dp)
                 .fillMaxSize()
         ) {
+
             item {
-                Button(onClick = {
-                    permissionLauncher.launch(PermissionUtils.getRequiredBluetoothPermissions())
-                }) {
-                    Text("Select Printer")
-                }
+                Button(
+                    onClick = {
+                        permissionLauncher.launch(PermissionUtils.getRequiredBluetoothPermissions())
+                    }
+                ) { Text("Select Printer") }
             }
 
             item {
-                Button(onClick = {
-                    context.startActivity(Intent(context, PrinterControlPanelActivity::class.java))
-                }) {
-                    Text("Printer Control Panel")
-                }
+                Button(
+                    onClick = {
+                        context.startActivity(Intent(context, PrinterControlPanelActivity::class.java))
+                    }
+                ) { Text("Printer Control Panel") }
             }
 
             item {
@@ -147,15 +164,15 @@ fun ReceiptPrintScreen(
                 }
             }
 
-            // 🔥 FIXED — image now shows from deep link
+            // ⭐ BIG CLEAN PREVIEW (while printer still prints correct size)
             item {
-                imageBitmap?.let {
+                imageBitmap?.let { bmp ->
                     Image(
-                        it.asImageBitmap(),
-                        "Preview",
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Preview",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp)
+                            .heightIn(min = 200.dp, max = 500.dp)
                             .padding(vertical = 8.dp)
                     )
                 }
@@ -166,10 +183,9 @@ fun ReceiptPrintScreen(
                     val bmp = imageBitmap ?: return@Button
                     if (!AppBluetoothManager.isConnected.value) return@Button
 
-                    val resizedBitmap = bmp.copy(Bitmap.Config.ARGB_8888, true)
-                    val imageCmd = EscPosUtils.createImageCommand(resizedBitmap)
+                    val cmd = EscPosUtils.createImageCommand(bmp)
 
-                    AppBluetoothManager.printerHelper.sendBytes(imageCmd) { success ->
+                    AppBluetoothManager.printerHelper.sendBytes(cmd) { success ->
                         logs.add(if (success) "Print job sent." else "Failed to print image.")
                     }
                 }) {
@@ -178,12 +194,12 @@ fun ReceiptPrintScreen(
             }
 
             item {
-                Spacer(Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Text("Logs")
             }
 
-            items(logs) { logEntry ->
-                Text(logEntry, style = MaterialTheme.typography.bodySmall)
+            items(logs) { log ->
+                Text(log, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
