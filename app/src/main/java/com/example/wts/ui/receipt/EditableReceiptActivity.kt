@@ -167,14 +167,6 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
                         // THREE PRINT BUTTONS FOR TESTING
                         // -------------------------------
 
-                        Button(
-                            onClick = {
-                                val finalReceipt = receipt.copy(items = items)
-                                val bytes = EscPosUtils.formatReceiptA(finalReceipt)
-                                AppBluetoothManager.printerHelper.sendBytes(bytes)
-                            },
-                            modifier = Modifier.fillMaxWidth().height(50.dp)
-                        ) { Text("Print Style A (Image-like)") }
 
                         Button(
                             onClick = {
@@ -185,14 +177,6 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
                             modifier = Modifier.fillMaxWidth().height(50.dp)
                         ) { Text("Print Style B (Compact)") }
 
-                        Button(
-                            onClick = {
-                                val finalReceipt = receipt.copy(items = items)
-                                val bytes = EscPosUtils.formatReceiptC(finalReceipt)
-                                AppBluetoothManager.printerHelper.sendBytes(bytes)
-                            },
-                            modifier = Modifier.fillMaxWidth().height(50.dp)
-                        ) { Text("Print Style C (Modern Neat)") }
 
                         // EXTRA COMMANDS
                         Row(
