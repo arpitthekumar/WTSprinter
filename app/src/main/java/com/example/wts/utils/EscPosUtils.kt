@@ -41,45 +41,73 @@ object EscPosUtils {
         return byteArrayOf(GS, 0x21, size.toByte())
     }
 
+    fun getSelectFont(font: Byte): ByteArray {
+        return byteArrayOf(ESC, 0x4D, font)
+    }
+    private const val RECEIPT_WIDTH_DOTS = 384 // fixed width for 58mm printers
+
     fun createImageCommand(bitmap: Bitmap): ByteArray {
-        val aspectRatio = bitmap.height.toFloat() / bitmap.width.toFloat()
-        val targetHeight = (MAX_DOTS_PER_LINE * aspectRatio).roundToInt()
-        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, MAX_DOTS_PER_LINE, targetHeight, true)
-        return convertToMonochromeCommand(scaledBitmap)
+        // scale with correct aspect ratio
+        val ratio = bitmap.height.toFloat() / bitmap.width.toFloat()
+        val targetHeight = (RECEIPT_WIDTH_DOTS * ratio).roundToInt()
+
+        val scaled = Bitmap.createScaledBitmap(bitmap, RECEIPT_WIDTH_DOTS, targetHeight, true)
+
+        // convert to pure white background always
+        val cleanBitmap = Bitmap.createBitmap(RECEIPT_WIDTH_DOTS, targetHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(cleanBitmap)
+        canvas.drawColor(Color.WHITE)
+        canvas.drawBitmap(scaled, 0f, 0f, null)
+
+        return convertToMonochromeCommand(cleanBitmap)
     }
 
     private fun convertToMonochromeCommand(bitmap: Bitmap): ByteArray {
-        val stream = ByteArrayOutputStream()
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.WHITE)
-        canvas.drawBitmap(bitmap, 0f, 0f, null)
-
         val width = bitmap.width
         val height = bitmap.height
-        val widthInBytes = (width + 7) / 8
+        val widthBytes = (width + 7) / 8
 
-        stream.write(byteArrayOf(GS, 0x76, 0x30, 0, widthInBytes.toByte(), (widthInBytes ushr 8).toByte(), height.toByte(), (height ushr 8).toByte()))
+        val baos = ByteArrayOutputStream()
+
+        // ESC/POS Header for raster printing
+        baos.write(
+            byteArrayOf(
+                0x1D, 0x76, 0x30, 0x00,
+                (widthBytes and 0xFF).toByte(),
+                ((widthBytes shr 8) and 0xFF).toByte(),
+                (height and 0xFF).toByte(),
+                ((height shr 8) and 0xFF).toByte()
+            )
+        )
 
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
         for (y in 0 until height) {
-            for (x in 0 until widthInBytes) {
-                var slice: Byte = 0
-                for (b in 0..7) {
-                    val pixelX = x * 8 + b
-                    if (pixelX < width) {
-                        val pixel = pixels[y * width + pixelX]
-                        val luminance = (0.299 * Color.red(pixel) + 0.587 * Color.green(pixel) + 0.114 * Color.blue(pixel)).toInt()
-                        if (luminance < 128) {
-                            slice = (slice.toInt() or (1 shl (7 - b))).toByte()
+            for (xByte in 0 until widthBytes) {
+                var slice = 0
+
+                for (bit in 0 until 8) {
+                    val x = xByte * 8 + bit
+                    if (x < width) {
+                        val pixel = pixels[y * width + x]
+
+                        val luminance =
+                            (0.3 * Color.red(pixel) +
+                                    0.59 * Color.green(pixel) +
+                                    0.11 * Color.blue(pixel))
+
+                        if (luminance < 140) {   // BETTER THRESHOLD
+                            slice = slice or (1 shl (7 - bit))
                         }
                     }
                 }
-                stream.write(slice.toInt())
+
+                baos.write(slice)
             }
         }
-        return stream.toByteArray()
+
+        return baos.toByteArray()
     }
 
     fun formatReceipt(receipt: ReceiptData): ByteArray {
@@ -87,12 +115,12 @@ object EscPosUtils {
 
         // Initialize
         stream.write(getInitCommands())
+        stream.write(getSelectFont(1)) // Select Font B (smaller)
 
         // Header
         stream.write(getSetJustification(1)) // Center
-        stream.write(getSetTextSize(1, 1))   // Double size
-        stream.write("Bhootiya Fabric Collection\n".toByteArray())
-        stream.write(getSetTextSize(0, 0))   // Normal size
+        stream.write("Bhootiya Fabric\n".toByteArray())
+        stream.write("Collection\n".toByteArray())
         stream.write("Moti Ganj, Bakebar Road, Bharthana\n".toByteArray())
         stream.write("Ph: +91 82736 89065\n".toByteArray())
         stream.write(getPrintAndFeed(1))
@@ -105,31 +133,31 @@ object EscPosUtils {
         if (receipt.date != "Invalid Date" && receipt.time != "Invalid Date") {
             stream.write("Date: ${receipt.date} Time: ${receipt.time}\n".toByteArray())
         }
-        stream.write("--------------------------------\n".toByteArray())
+        stream.write("------------------------------------------\n".toByteArray())
 
         // Items
-        val header = String.format("%-16s%4s%6s%6s", "Item", "Qty", "Rate", "Amt")
+        val header = String.format("%-24s%6s%6s%6s", "Item", "Qty", "Rate", "Amt")
         stream.write(header.toByteArray())
         stream.write("\n".toByteArray())
-        stream.write("--------------------------------\n".toByteArray())
+        stream.write("------------------------------------------\n".toByteArray())
 
         receipt.items.forEach { item ->
-            val namePart = item.name.padEnd(16, ' ').substring(0, 16)
-            val qtyPart = item.qty.toString().padStart(4, ' ')
+            val namePart = item.name.padEnd(24, ' ').take(24)
+            val qtyPart = item.qty.toString().padStart(6, ' ')
             val ratePart = item.price.padStart(6, ' ')
             val amtPart = item.total.padStart(6, ' ')
             val itemLine = "$namePart$qtyPart$ratePart$amtPart\n"
             stream.write(itemLine.toByteArray())
         }
-        stream.write("--------------------------------\n".toByteArray())
+        stream.write("------------------------------------------\n".toByteArray())
 
         // Totals
         stream.write(getSetJustification(2)) // Right
-        stream.write(String.format("%16s %15s\n", "Subtotal:", receipt.subtotal).toByteArray())
-        stream.write(String.format("%16s %15s\n", "Discount:", receipt.discount).toByteArray())
-        stream.write(getSetTextSize(0, 1)) // Double height for bold effect
-        stream.write(String.format("%16s %15s\n", "Total:", receipt.total).toByteArray())
-        stream.write(getSetTextSize(0, 0)) // Reset to normal size
+        stream.write(String.format("%26s %15s\n", "Subtotal:", receipt.subtotal).toByteArray())
+        if (safeAmount(receipt.discount) > 0.0) {
+            stream.write(String.format("%26s %15s\n", "Discount:", receipt.discount).toByteArray())
+        }
+        stream.write(String.format("%26s %15s\n", "Total:", receipt.total).toByteArray())
         stream.write("\n".toByteArray())
 
         // Payment Method
@@ -137,23 +165,30 @@ object EscPosUtils {
         stream.write("Payment: ${receipt.paymentMethod}\n\n".toByteArray())
 
         // Barcode
-        stream.write(getSetJustification(1)) // Center
-        val pureBase64 = receipt.barcode.substringAfter(",")
-        val bytes = Base64.decode(pureBase64, Base64.DEFAULT)
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        stream.write(createImageCommand(bitmap))
-        stream.write("\n".toByteArray())
-        stream.write("${receipt.invoiceNumber}\n".toByteArray())
-        stream.write("\n".toByteArray())
+        if (receipt.barcode.isNotBlank()) {
+            stream.write(getSetJustification(1)) // Center
+            val pureBase64 = receipt.barcode.substringAfter(",")
+            val bytes = Base64.decode(pureBase64, Base64.DEFAULT)
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            if (bitmap != null) {
+                stream.write(createImageCommand(bitmap))
+                stream.write("${receipt.invoiceNumber}\n".toByteArray()) // Invoice number with one newline
+            }
+        }
+
+        stream.write("\n".toByteArray()) // One blank line for spacing
 
         // Footer
         stream.write(getSetJustification(1)) // Center
         stream.write("Thank you, Visit Again!\n".toByteArray())
 
-        // Feed and cut
-        stream.write(getPrintAndFeed(5))
+        // Reset font and cut
+        stream.write(getSelectFont(0)) // Reset to Font A
+        stream.write(getPrintAndFeed(1)) // Feed only ONE line
         stream.write(getCutCommand())
 
         return stream.toByteArray()
     }
+
+    private fun safeAmount(v: String): Double = v.replace("₹", "").replace(",", "").trim().toDoubleOrNull() ?: 0.0
 }
