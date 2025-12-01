@@ -206,57 +206,75 @@ object EscPosUtils {
     // =======================================================
 
     fun formatReceiptB(receipt: ReceiptData): ByteArray {
-        val s = ByteArrayOutputStream()
-        s.write(getInitCommands())
+        val stream = ByteArrayOutputStream()
 
-        s.write(getSetJustification(1))
-        s.write("Bhootiya Fabric\n".toByteArray())
-        s.write("Moti Ganj, Bakebar Road, Bharthana\n".toByteArray())
-        s.write("Ph: +91 82736 89065\n".toByteArray())
-        s.write("--------------------------------\n".toByteArray())
+        stream.write(getInitCommands())
 
-        s.write(getSetJustification(0))
-        s.write("Invoice:${receipt.invoiceNumber}\n".toByteArray())
-        s.write("Name:${receipt.customerName}\n".toByteArray())
-        s.write("Phone:${receipt.customerPhone}\n".toByteArray())
-        s.write("Date:${receipt.date} Time: ${receipt.time}\n".toByteArray())
+        // ---------- HEADER ----------
+        stream.write(getSetJustification(1))
+        stream.write("Bhootiya Fabric\n".toByteArray())
+        stream.write("Collection\n".toByteArray())
 
-        s.write("--------------------------------\n".toByteArray())
-        s.write("Item         QTY  RT   AMT\n".toByteArray())
-        s.write("--------------------------------\n".toByteArray())
+        stream.write(getSetTextSize(0, 0))
+        stream.write("Moti Ganj, Bakebar Road, Bharthana\n".toByteArray())
+        stream.write("Ph: +91 82736 89065\n".toByteArray())
 
-        receipt.items.forEach {
-            val name = it.name.take(12).padEnd(12, ' ')
-            val qty = it.qty.toString().padStart(3, ' ')
-            val rate = formatMoney(it.price).padStart(5, ' ')
-            val amt = formatMoney(it.total).padStart(6, ' ')
-            s.write("$name $qty $rate $amt\n".toByteArray())
+        stream.write("--------------------------------\n".toByteArray())
+
+        // ---------- CUSTOMER ----------
+        stream.write(getSetJustification(0))
+        stream.write("Invoice:${receipt.invoiceNumber}\n".toByteArray())
+        stream.write("Name:${receipt.customerName}\n".toByteArray())
+        stream.write("Phone:${receipt.customerPhone}\n".toByteArray())
+        stream.write("Date:${receipt.date} ${receipt.time}\n".toByteArray())
+
+        stream.write("--------------------------------\n".toByteArray())
+
+        // ---------- ITEM HEADER ----------
+        stream.write(String.format("%-12s %3s %5s %6s\n",
+            "Item", "QTY", "RT", "AMT").toByteArray())
+        stream.write("--------------------------------\n".toByteArray())
+
+        // ---------- ITEMS ----------
+        receipt.items.forEach { item ->
+            val name = item.name.take(12).padEnd(12, ' ')
+            val qty = item.qty.toString().padStart(3, ' ')
+
+            // remove ₹ and , to avoid Chinese characters
+            val rt = item.price.replace("₹", "").replace(",", "").trim()
+                .padStart(5, ' ')
+
+            val amt = item.total.replace("₹", "").replace(",", "").trim()
+                .padStart(6, ' ')
+
+            stream.write("$name $qty $rt $amt\n".toByteArray())
         }
 
-        s.write("--------------------------------\n".toByteArray())
+        stream.write("--------------------------------\n".toByteArray())
 
-        s.write("Subtotal: ${formatMoney(receipt.subtotal)}\n".toByteArray())
-        s.write("Total: ${formatMoney(receipt.total)}\n".toByteArray())
-        s.write("Payment: ${receipt.paymentMethod}\n".toByteArray())
+        // ---------- TOTALS ----------
+        val subtotal = receipt.subtotal.replace("₹", "").replace(",", "")
+        val total = receipt.total.replace("₹", "").replace(",", "")
+        val discount = receipt.discount.replace("₹", "").replace(",", "")
 
-        // Barcode
-        if (receipt.barcode.isNotBlank()) {
-            try {
-                val pure = receipt.barcode.substringAfter(",")
-                val bytes = Base64.decode(pure, Base64.DEFAULT)
-                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                if (bitmap != null) {
-                    s.write(getSetJustification(1))
-                    s.write(createImageCommand(bitmap))
-                }
-            } catch (_: Exception) { }
+        stream.write("Subtotal: $subtotal\n".toByteArray())
+        if ((discount.toDoubleOrNull() ?: 0.0) > 0) {
+            stream.write("Discount: $discount\n".toByteArray())
         }
-        s.write(getSetJustification(1))
-        s.write("Thank you! Visit Again!\n".toByteArray())
-        s.write("\n".toByteArray())
+        stream.write("Total: $total\n".toByteArray())
 
-        return s.toByteArray()
+        // ---------- PAYMENT ----------
+        stream.write("Payment: ${receipt.paymentMethod}\n".toByteArray())
+
+        // ---------- FOOTER ----------
+        stream.write("--------------------------------\n".toByteArray())
+        stream.write(getSetJustification(1))
+        stream.write("Thank you!\n".toByteArray())
+
+        stream.write(getCutCommand())
+        return stream.toByteArray()
     }
+
     // Safe converter for discount
     private fun safeAmount(v: String): Double =
         v.replace("₹", "").replace(",", "").trim().toDoubleOrNull() ?: 0.0
