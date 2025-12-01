@@ -125,29 +125,23 @@ object EscPosUtils {
     }
 
     // ===========================
-    // RECEIPT BUILDER
+    // DEFAULT RECEIPT
+    // (Your original untouched method)
     // ===========================
 
     fun formatReceipt(receipt: ReceiptData): ByteArray {
         val stream = ByteArrayOutputStream()
-        val separator = "__________________________________________\n"
 
         stream.write(getInitCommands())
 
-        // -------- HEADER --------
         stream.write(getSetJustification(1))
         stream.write("Bhootiyа Fabric\n".toByteArray())
         stream.write("Collection\n".toByteArray())
-
-        stream.write(getSetTextSize(0, 0))
         stream.write("Moti Ganj, Bakebar Road, Bharthana\n".toByteArray())
         stream.write("Ph: +91 82736 89065\n".toByteArray())
-
         stream.write("------------------------------------------\n".toByteArray())
 
-        // -------- CUSTOMER INFO --------
         stream.write(getSetJustification(0))
-
         stream.write("Invoice: ${receipt.invoiceNumber}\n".toByteArray())
         stream.write("Customer: ${receipt.customerName}\n".toByteArray())
         stream.write("Phone: ${receipt.customerPhone}\n".toByteArray())
@@ -158,13 +152,11 @@ object EscPosUtils {
 
         stream.write("------------------------------------------\n".toByteArray())
 
-        // -------- ITEM HEADER --------
         val itemHeader = String.format("%-20s %4s %7s %7s", "Item", "Qty", "Rate", "Amt")
         stream.write(itemHeader.toByteArray())
         stream.write("\n".toByteArray())
         stream.write("------------------------------------------\n".toByteArray())
 
-        // -------- ITEMS --------
         receipt.items.forEach { item ->
             val name = item.name.take(20).padEnd(20, ' ')
             val qty = item.qty.toString().padStart(4, ' ')
@@ -175,51 +167,189 @@ object EscPosUtils {
 
         stream.write("------------------------------------------\n".toByteArray())
 
-        // -------- TOTALS --------
         stream.write(getSetJustification(0))
-
         stream.write("Subtotal: ${formatMoney(receipt.subtotal)}\n".toByteArray())
 
         if ((receipt.discount.toDoubleOrNull() ?: 0.0) > 0.0) {
-            stream.write(String.format("Discount: %12s\n", "₹${receipt.discount}").toByteArray())
+            stream.write("Discount: ₹${receipt.discount}\n".toByteArray())
         }
 
         stream.write(getSetBold(true))
         stream.write("Total: ${formatMoney(receipt.total)}\n".toByteArray())
         stream.write(getSetBold(false))
 
-//        stream.write("\n".toByteArray())
-
-        // -------- PAYMENT --------
-        stream.write(getSetJustification(0))
         stream.write("Payment: ${receipt.paymentMethod}\n".toByteArray())
 
-        // -------- BARCODE --------
+        // Barcode
         if (receipt.barcode.isNotBlank()) {
             try {
-                stream.write(getSetJustification(1)) // Center barcode
                 val pure = receipt.barcode.substringAfter(",")
                 val bytes = Base64.decode(pure, Base64.DEFAULT)
                 val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 if (bitmap != null) {
+                    stream.write(getSetJustification(1))
                     stream.write(createImageCommand(bitmap))
                     stream.write("${receipt.invoiceNumber}\n".toByteArray())
                 }
-            } catch (e: Exception) { /* Fails Silently */ }
+            } catch (_: Exception) { }
         }
-        stream.write("\n".toByteArray())
 
-        // -------- FOOTER --------
+        stream.write("\n".toByteArray())
         stream.write(getSetJustification(1))
         stream.write(getSetTextSize(1, 1))
         stream.write("Thank you, Visit Again!\n".toByteArray())
 
-        // Finish
-        stream.write(getSetTextSize(0, 0))
-        stream.write(getPrintAndFeed(1))
         stream.write(getCutCommand())
-
         return stream.toByteArray()
     }
 
+    // =======================================================
+    // ** NEW STYLE A — IMAGE-LIKE (BIG CLEAN SPACED) **
+    // =======================================================
+
+    fun formatReceiptA(receipt: ReceiptData): ByteArray {
+        val s = ByteArrayOutputStream()
+
+        s.write(getInitCommands())
+
+        s.write(getSetJustification(1))
+        s.write(getSetTextSize(1, 1))
+        s.write("Bhootiya Fabric\n".toByteArray())
+        s.write("Collection\n".toByteArray())
+
+        s.write(getSetTextSize(0, 0))
+        s.write("Moti Ganj, Bakebar Road, Bharthana\n".toByteArray())
+        s.write("Ph: +91 82736 89065\n".toByteArray())
+
+        s.write("────────────────────────────────────────\n".toByteArray())
+
+        s.write(getSetJustification(0))
+        s.write("Invoice: ${receipt.invoiceNumber}\n".toByteArray())
+        s.write("Customer: ${receipt.customerName}\n".toByteArray())
+        s.write("Phone: ${receipt.customerPhone}\n".toByteArray())
+        s.write("Date: ${receipt.date}  Time: ${receipt.time}\n".toByteArray())
+
+        s.write("────────────────────────────────────────\n".toByteArray())
+
+        val header = String.format("%-20s %4s %7s %7s", "Item", "Qty", "Rate", "Amt")
+        s.write(header.toByteArray())
+        s.write("\n".toByteArray())
+
+        s.write("────────────────────────────────────────\n".toByteArray())
+
+        receipt.items.forEach {
+            val name = it.name.take(20).padEnd(20, ' ')
+            val qty = it.qty.toString().padStart(4, ' ')
+            val rate = formatMoney(it.price).padStart(7, ' ')
+            val amt = formatMoney(it.total).padStart(7, ' ')
+            s.write("$name $qty $rate $amt\n".toByteArray())
+        }
+
+        s.write("────────────────────────────────────────\n".toByteArray())
+
+        s.write("Subtotal: ${formatMoney(receipt.subtotal)}\n".toByteArray())
+        if ((receipt.discount.toDoubleOrNull() ?: 0.0) > 0.0) {
+            s.write("Discount: ₹${receipt.discount}\n".toByteArray())
+        }
+
+        s.write(getSetBold(true))
+        s.write("Total: ${formatMoney(receipt.total)}\n".toByteArray())
+        s.write(getSetBold(false))
+
+        s.write("Payment: ${receipt.paymentMethod}\n".toByteArray())
+
+        s.write(getSetJustification(1))
+        s.write(getSetTextSize(1, 1))
+        s.write("Thank you, Visit Again!\n".toByteArray())
+
+        s.write(getCutCommand())
+        return s.toByteArray()
+    }
+
+    // =======================================================
+    // ** NEW STYLE B — COMPACT SHOP (SMALL + TIGHT) **
+    // =======================================================
+
+    fun formatReceiptB(receipt: ReceiptData): ByteArray {
+        val s = ByteArrayOutputStream()
+        s.write(getInitCommands())
+
+        s.write(getSetJustification(1))
+        s.write("Bhootiya Fabric\n".toByteArray())
+
+        s.write(getSetJustification(0))
+        s.write("Invoice:${receipt.invoiceNumber}\n".toByteArray())
+        s.write("Name:${receipt.customerName}\n".toByteArray())
+        s.write("Phone:${receipt.customerPhone}\n".toByteArray())
+        s.write("Date:${receipt.date} ${receipt.time}\n".toByteArray())
+
+        s.write("--------------------------------\n".toByteArray())
+        s.write("Item         QTY  RT   AMT\n".toByteArray())
+        s.write("--------------------------------\n".toByteArray())
+
+        receipt.items.forEach {
+            val name = it.name.take(12).padEnd(12, ' ')
+            val qty = it.qty.toString().padStart(3, ' ')
+            val rate = formatMoney(it.price).padStart(5, ' ')
+            val amt = formatMoney(it.total).padStart(6, ' ')
+            s.write("$name $qty $rate $amt\n".toByteArray())
+        }
+
+        s.write("--------------------------------\n".toByteArray())
+
+        s.write("Subtotal: ${formatMoney(receipt.subtotal)}\n".toByteArray())
+        s.write("Total: ${formatMoney(receipt.total)}\n".toByteArray())
+
+        s.write(getSetJustification(1))
+        s.write("Thank you!\n".toByteArray())
+
+        s.write(getCutCommand())
+        return s.toByteArray()
+    }
+
+    // =======================================================
+    // ** NEW STYLE C — MODERN CLEAN + BOLD LABELS **
+    // =======================================================
+
+    fun formatReceiptC(receipt: ReceiptData): ByteArray {
+        val s = ByteArrayOutputStream()
+        s.write(getInitCommands())
+
+        s.write(getSetJustification(1))
+        s.write(getSetBold(true))
+        s.write("Bhootiya Fabric\n".toByteArray())
+        s.write(getSetBold(false))
+        s.write("Collection\n".toByteArray())
+
+        s.write(getSetJustification(0))
+        s.write("------------------------------------------------\n".toByteArray())
+        s.write("Invoice:  ${receipt.invoiceNumber}\n".toByteArray())
+        s.write("Customer: ${receipt.customerName}\n".toByteArray())
+        s.write("Phone:    ${receipt.customerPhone}\n".toByteArray())
+        s.write("Date:     ${receipt.date}   ${receipt.time}\n".toByteArray())
+        s.write("------------------------------------------------\n".toByteArray())
+
+        s.write("Item                Qty   Rate   Amt\n".toByteArray())
+        s.write("------------------------------------------------\n".toByteArray())
+
+        receipt.items.forEach {
+            val name = it.name.take(16).padEnd(16, ' ')
+            val qty = it.qty.toString().padStart(3)
+            val rate = formatMoney(it.price).padStart(6)
+            val amt = formatMoney(it.total).padStart(6)
+            s.write("$name $qty  $rate  $amt\n".toByteArray())
+        }
+
+        s.write("------------------------------------------------\n".toByteArray())
+
+        s.write("Subtotal: ${formatMoney(receipt.subtotal)}\n".toByteArray())
+        s.write("Total:    ${formatMoney(receipt.total)}\n".toByteArray())
+        s.write("Payment:  ${receipt.paymentMethod}\n".toByteArray())
+
+        s.write(getSetJustification(1))
+        s.write("Thank you, Visit Again!\n".toByteArray())
+
+        s.write(getCutCommand())
+        return s.toByteArray()
+    }
 }

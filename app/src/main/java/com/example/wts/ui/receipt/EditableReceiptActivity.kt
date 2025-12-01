@@ -112,7 +112,15 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Editable Receipt") }, actions = { PrinterStatusIcon() }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Editable Receipt") },
+                actions = { PrinterStatusIcon() }
+            )
+        }
+    ) { padding ->
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -122,22 +130,28 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
+            // PREVIEW
             item {
                 ReceiptPreview(receipt.copy(items = items), barcodeBitmap)
             }
 
-            item { Spacer(modifier = Modifier.height(16.dp)) }
+            item { Spacer(Modifier.height(16.dp)) }
 
+            // BUTTON NODES
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+
+                        // SELECT PRINTER
                         Button(
                             onClick = {
                                 if (PermissionUtils.hasBluetoothPermissions(context)) {
@@ -147,81 +161,96 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Select Printer")
-                        }
+                        ) { Text("Select Printer") }
+
+                        // -------------------------------
+                        // THREE PRINT BUTTONS FOR TESTING
+                        // -------------------------------
 
                         Button(
                             onClick = {
                                 val finalReceipt = receipt.copy(items = items)
-                                val commands = EscPosUtils.formatReceipt(finalReceipt)
-                                AppBluetoothManager.printerHelper.sendBytes(commands)
+                                val bytes = EscPosUtils.formatReceiptA(finalReceipt)
+                                AppBluetoothManager.printerHelper.sendBytes(bytes)
                             },
-                            modifier = Modifier.fillMaxWidth().height(52.dp)
-                        ) {
-                            Text("Print Receipt", fontSize = 16.sp)
-                        }
+                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                        ) { Text("Print Style A (Image-like)") }
 
+                        Button(
+                            onClick = {
+                                val finalReceipt = receipt.copy(items = items)
+                                val bytes = EscPosUtils.formatReceiptB(finalReceipt)
+                                AppBluetoothManager.printerHelper.sendBytes(bytes)
+                            },
+                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                        ) { Text("Print Style B (Compact)") }
+
+                        Button(
+                            onClick = {
+                                val finalReceipt = receipt.copy(items = items)
+                                val bytes = EscPosUtils.formatReceiptC(finalReceipt)
+                                AppBluetoothManager.printerHelper.sendBytes(bytes)
+                            },
+                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                        ) { Text("Print Style C (Modern Neat)") }
+
+                        // EXTRA COMMANDS
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
                                 onClick = {
-                                    val commands = EscPosUtils.getPrintAndFeed(5)
-                                    AppBluetoothManager.printerHelper.sendBytes(commands)
+                                    AppBluetoothManager.printerHelper.sendBytes(EscPosUtils.getPrintAndFeed(5))
                                 },
                                 modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Feed Paper")
-                            }
+                            ) { Text("Feed") }
+
                             Button(
                                 onClick = {
-                                    val commands = EscPosUtils.getCutCommand()
-                                    AppBluetoothManager.printerHelper.sendBytes(commands)
+                                    AppBluetoothManager.printerHelper.sendBytes(EscPosUtils.getCutCommand())
                                 },
                                 modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Cut Paper")
-                            }
+                            ) { Text("Cut") }
                         }
                     }
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(16.dp)) }
+            item { Spacer(Modifier.height(20.dp)) }
 
             // Editable fields
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Field(label = "Invoice Number", value = receipt.invoiceNumber) {
+                    Field("Invoice Number", receipt.invoiceNumber) {
                         receipt = receipt.copy(invoiceNumber = it)
                     }
-                    Field(label = "Customer Name", value = receipt.customerName) {
+                    Field("Customer Name", receipt.customerName) {
                         receipt = receipt.copy(customerName = it)
                     }
-                    Field(label = "Customer Phone", value = receipt.customerPhone) {
+                    Field("Customer Phone", receipt.customerPhone) {
                         receipt = receipt.copy(customerPhone = it)
                     }
-                    Field(label = "Date", value = receipt.date) {
+                    Field("Date", receipt.date) {
                         receipt = receipt.copy(date = it)
                     }
-                    Field(label = "Time", value = receipt.time) {
+                    Field("Time", receipt.time) {
                         receipt = receipt.copy(time = it)
                     }
-                    Field(label = "Payment Method", value = receipt.paymentMethod) {
+                    Field("Payment Method", receipt.paymentMethod) {
                         receipt = receipt.copy(paymentMethod = it)
                     }
-                    Field(label = "Discount", value = receipt.discount) {
+                    Field("Discount", receipt.discount) {
                         receipt = receipt.copy(discount = it)
                     }
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(12.dp)) }
+            item { Spacer(Modifier.height(16.dp)) }
 
+            // Items List
             item {
-                Text("Items", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Items", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
 
             itemsIndexed(items) { index, item ->
@@ -232,29 +261,37 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
                     elevation = CardDefaults.cardElevation(3.dp)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Item ${index + 1}", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text(
+                                "Item ${index + 1}",
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
                             IconButton(onClick = { items.removeAt(index) }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                                Icon(Icons.Default.Delete, contentDescription = "Delete")
                             }
                         }
 
-                        Field(label = "Name", value = item.name) {
+                        Field("Name", item.name) {
                             items[index] = item.copy(name = it)
                         }
 
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FieldSmall(label = "Qty", value = item.qty.toString(), modifier = Modifier.weight(1f)) { newQty ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FieldSmall("Qty", item.qty.toString(), Modifier.weight(1f)) { newQty ->
                                 val q = newQty.toIntOrNull() ?: 1
                                 items[index] = item.copy(qty = q)
                             }
-                            FieldSmall(label = "Rate", value = item.price, modifier = Modifier.weight(1f)) { newRate ->
+                            FieldSmall("Rate", item.price, Modifier.weight(1f)) { newRate ->
                                 items[index] = item.copy(price = newRate)
                             }
-                            FieldSmall(label = "Amount", value = item.total, modifier = Modifier.weight(1f)) { newAmt ->
+                            FieldSmall("Amount", item.total, Modifier.weight(1f)) { newAmt ->
                                 items[index] = item.copy(total = newAmt)
                             }
                         }
@@ -263,18 +300,15 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
             }
 
             item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = {
-                    items.add(ItemData(name = "New Item", qty = 1, price = "0", total = "0"))
-                }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Add Item")
-                }
+                Button(
+                    onClick = {
+                        items.add(ItemData(name = "New Item", qty = 1, price = "0", total = "0"))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Add Item") }
             }
 
-            item { Spacer(modifier = Modifier.height(12.dp)) }
-
-
-            item { Spacer(modifier = Modifier.height(24.dp)) }
+            item { Spacer(Modifier.height(30.dp)) }
         }
     }
 }
@@ -298,95 +332,109 @@ fun ReceiptPreview(receipt: ReceiptData, barcodeBitmap: Bitmap?) {
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-            BoldRow(label = "Invoice:", value = receipt.invoiceNumber)
-            BoldRow(label = "Customer:", value = receipt.customerName)
-            BoldRow(label = "Phone:", value = receipt.customerPhone)
+            BoldRow("Invoice:", receipt.invoiceNumber)
+            BoldRow("Customer:", receipt.customerName)
+            BoldRow("Phone:", receipt.customerPhone)
 
-            Row(modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth()) {
                 Text("Date:", fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(if (receipt.date.isNotBlank()) receipt.date else currentDate(), fontSize = 12.sp)
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(receipt.date, fontSize = 12.sp)
+                Spacer(Modifier.width(12.dp))
                 Text("Time:", fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(if (receipt.time.isNotBlank()) receipt.time else currentTime(), fontSize = 12.sp)
+                Spacer(Modifier.width(6.dp))
+                Text(receipt.time, fontSize = 12.sp)
             }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
             Row(Modifier.fillMaxWidth()) {
-                Text("Item", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                Text("Qty", modifier = Modifier.width(40.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
-                Text("Rate", modifier = Modifier.width(60.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
-                Text("Amt", modifier = Modifier.width(60.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
+                Text("Item", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                Text("Qty", Modifier.width(40.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
+                Text("Rate", Modifier.width(60.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
+                Text("Amt", Modifier.width(60.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
             }
 
             HorizontalDivider(Modifier.padding(vertical = 6.dp))
 
-            receipt.items.forEach { it ->
-                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Text(it.name, modifier = Modifier.weight(1f), fontSize = 12.sp)
-                    Text(it.qty.toString(), modifier = Modifier.width(40.dp), textAlign = TextAlign.End, fontSize = 12.sp)
-                    Text("₹${it.price}", modifier = Modifier.width(60.dp), textAlign = TextAlign.End, fontSize = 12.sp)
-                    Text("₹${it.total}", modifier = Modifier.width(60.dp), textAlign = TextAlign.End, fontSize = 12.sp)
+            receipt.items.forEach {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Text(it.name, Modifier.weight(1f), fontSize = 12.sp)
+                    Text(it.qty.toString(), Modifier.width(40.dp), textAlign = TextAlign.End, fontSize = 12.sp)
+                    Text("₹${it.price}", Modifier.width(60.dp), textAlign = TextAlign.End, fontSize = 12.sp)
+                    Text("₹${it.total}", Modifier.width(60.dp), textAlign = TextAlign.End, fontSize = 12.sp)
                 }
             }
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
             BoldRow("Subtotal:", "₹${receipt.subtotal}")
-            if (safeAmount(receipt.discount) > 0.0) {
+            if (safeAmount(receipt.discount) > 0) {
                 BoldRow("Discount:", "₹${receipt.discount}")
             }
             BoldRow("Total:", "₹${receipt.total}")
-            BoldRow("Payment:", "₹${receipt.paymentMethod}")
-
-            Spacer(modifier = Modifier.height(8.dp))
+            BoldRow("Payment:", receipt.paymentMethod)
 
             barcodeBitmap?.let { bmp ->
-                Image(bmp.asImageBitmap(), contentDescription = "Barcode", modifier = Modifier.fillMaxWidth().height(80.dp))
+                Spacer(Modifier.height(10.dp))
+                Image(
+                    bmp.asImageBitmap(),
+                    contentDescription = "Barcode",
+                    modifier = Modifier.fillMaxWidth().height(80.dp)
+                )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-            Text("Thank you, Visit Again!", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            Text("Thank you, Visit Again!", fontWeight = FontWeight.Bold)
         }
     }
 }
 
+
 @Composable
 fun Field(label: String, value: String, onValue: (String) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+    ) {
         Text(label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        OutlinedTextField(value = value, onValueChange = onValue, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValue,
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
 @Composable
 fun RowScope.FieldSmall(label: String, value: String, modifier: Modifier = Modifier, onValue: (String) -> Unit) {
-    OutlinedTextField(value = value, onValueChange = onValue, singleLine = true, label = { Text(label) }, modifier = modifier)
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValue,
+        singleLine = true,
+        label = { Text(label) },
+        modifier = modifier
+    )
 }
 
 @Composable
 fun BoldRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row(Modifier.fillMaxWidth()) {
         Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(Modifier.width(8.dp))
         Text(value, fontSize = 12.sp)
     }
 }
 
-private fun safeAmount(v: String): Double = v.replace("₹", "").replace(",", "").trim().toDoubleOrNull() ?: 0.0
+private fun safeAmount(v: String): Double =
+    v.replace("₹", "").replace(",", "").trim().toDoubleOrNull() ?: 0.0
 
-private fun formatAmount(v: Double): String {
-    return "%.2f".format(v)
-}
+private fun formatAmount(v: Double): String = "%.2f".format(v)
 
-private fun currentDate(): String {
-    val fmt = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-    return fmt.format(Date())
-}
+private fun currentDate(): String =
+    SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
 
-private fun currentTime(): String {
-    val fmt = SimpleDateFormat("h:mm a", Locale.getDefault())
-    return fmt.format(Date())
-}
+private fun currentTime(): String =
+    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
