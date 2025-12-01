@@ -177,6 +177,18 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
                     }
                 }
             }
+            item {
+                Button(
+                    onClick = {
+                        val finalReceipt = receipt.copy(items = items)
+                        val commands = EscPosUtils.formatReceipt(finalReceipt)
+                        AppBluetoothManager.printerHelper.sendBytes(commands)
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) {
+                    Text("Print Receipt", fontSize = 16.sp)
+                }
+            }
 
             item { Spacer(modifier = Modifier.height(16.dp)) }
 
@@ -262,18 +274,6 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
 
             item { Spacer(modifier = Modifier.height(12.dp)) }
 
-            item {
-                Button(
-                    onClick = {
-                        val finalReceipt = receipt.copy(items = items)
-                        val commands = EscPosUtils.formatReceipt(finalReceipt)
-                        AppBluetoothManager.printerHelper.sendBytes(commands)
-                    },
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
-                ) {
-                    Text("Print Receipt", fontSize = 16.sp)
-                }
-            }
 
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
