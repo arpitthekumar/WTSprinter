@@ -4,7 +4,9 @@ import android.app.Activity
 import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.wts.bluetooth.AppBluetoothManager
@@ -96,8 +99,17 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
         )
     }
 
-    val receiptBitmap: Bitmap = remember(receipt, items.toList()) {
-        ReceiptPreviewGenerator.generatePreview(receipt.copy(items = items))
+    val barcodeBitmap: Bitmap? = remember(receipt.barcode) {
+        try {
+            if (receipt.barcode.isNotBlank()) {
+                val pure = receipt.barcode.substringAfter(",")
+                val bytes = Base64.decode(pure, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Editable Receipt") }, actions = { PrinterStatusIcon() }) }) { padding ->
@@ -111,14 +123,7 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
         ) {
 
             item {
-                Image(
-                    bitmap = receiptBitmap.asImageBitmap(),
-                    contentDescription = "Receipt Preview",
-                    modifier = Modifier
-                        .border(BorderStroke(2.dp, Color.Black), RoundedCornerShape(6.dp))
-                        .clip(RoundedCornerShape(6.dp))
-
-                )
+                ReceiptPreview(receipt.copy(items = items), barcodeBitmap)
             }
 
             item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -259,7 +264,7 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
 
             item {
                 Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { 
+                Button(onClick = {
                     items.add(ItemData(name = "New Item", qty = 1, price = "0", total = "0"))
                 }, modifier = Modifier.fillMaxWidth()) {
                     Text("Add Item")
@@ -274,6 +279,79 @@ fun EditableReceiptScreen(initialReceipt: ReceiptData) {
     }
 }
 
+@Composable
+fun ReceiptPreview(receipt: ReceiptData, barcodeBitmap: Bitmap?) {
+    Box(
+        modifier = Modifier
+            .widthIn(min = 280.dp, max = 360.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .border(BorderStroke(2.dp, Color.Black), RoundedCornerShape(6.dp))
+            .background(Color.White)
+            .padding(14.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+            Text("Bhootiya Fabric", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Collection", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Moti Ganj, Bakebar Road, Bharthana", fontSize = 10.sp)
+            Text("Ph: +91 82736 89065", fontSize = 10.sp)
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+            BoldRow(label = "Invoice:", value = receipt.invoiceNumber)
+            BoldRow(label = "Customer:", value = receipt.customerName)
+            BoldRow(label = "Phone:", value = receipt.customerPhone)
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text("Date:", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(if (receipt.date.isNotBlank()) receipt.date else currentDate(), fontSize = 12.sp)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Time:", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(if (receipt.time.isNotBlank()) receipt.time else currentTime(), fontSize = 12.sp)
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+            Row(Modifier.fillMaxWidth()) {
+                Text("Item", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                Text("Qty", modifier = Modifier.width(40.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
+                Text("Rate", modifier = Modifier.width(60.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
+                Text("Amt", modifier = Modifier.width(60.dp), textAlign = TextAlign.End, fontWeight = FontWeight.Bold)
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 6.dp))
+
+            receipt.items.forEach { it ->
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Text(it.name, modifier = Modifier.weight(1f), fontSize = 12.sp)
+                    Text(it.qty.toString(), modifier = Modifier.width(40.dp), textAlign = TextAlign.End, fontSize = 12.sp)
+                    Text("₹${it.price}", modifier = Modifier.width(60.dp), textAlign = TextAlign.End, fontSize = 12.sp)
+                    Text("₹${it.total}", modifier = Modifier.width(60.dp), textAlign = TextAlign.End, fontSize = 12.sp)
+                }
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+            BoldRow("Subtotal:", "₹${receipt.subtotal}")
+            if (safeAmount(receipt.discount) > 0.0) {
+                BoldRow("Discount:", "₹${receipt.discount}")
+            }
+            BoldRow("Total:", "₹${receipt.total}")
+            BoldRow("Payment:", "₹${receipt.paymentMethod}")
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            barcodeBitmap?.let { bmp ->
+                Image(bmp.asImageBitmap(), contentDescription = "Barcode", modifier = Modifier.fillMaxWidth().height(80.dp))
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("Thank you, Visit Again!", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
 
 @Composable
 fun Field(label: String, value: String, onValue: (String) -> Unit) {
