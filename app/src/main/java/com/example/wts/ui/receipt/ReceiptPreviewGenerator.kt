@@ -17,28 +17,17 @@ import java.util.Locale
 
 object ReceiptPreviewGenerator {
 
-    private const val PREVIEW_WIDTH = 384 // For 58mm thermal paper
-    private const val MARGIN = 10       // Horizontal margin in pixels
+    // Standard 384 dot width for 58mm printers (48mm printable area)
+    private const val PREVIEW_WIDTH = 384
+    private const val MARGIN = 10
 
     fun generatePreview(receipt: ReceiptData): Bitmap {
         val contentWidth = PREVIEW_WIDTH - (2 * MARGIN)
 
-        // Define different paints for different text styles
-        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = 22f // Title
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-        }
-
-        val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = 14f // Sub-header font
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-        }
-
+        // --- Paints to mimic ESC/POS Font B (~42 chars) ---
         val bodyPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
-            textSize = 13f // Smaller body font to fix wrapping
+            textSize = 15f // Carefully chosen to mimic 42 chars/line
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
 
@@ -46,12 +35,17 @@ object ReceiptPreviewGenerator {
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         }
 
-        // Create a bitmap with a large height; we'll crop it later.
-        val tempBitmap = Bitmap.createBitmap(PREVIEW_WIDTH, 4000, Bitmap.Config.ARGB_8888)
+        val titlePaint = TextPaint(bodyBoldPaint).apply {
+            textSize = 22f
+        }
+
+        // --- Dynamic Height Canvas ---
+        // We draw on a large bitmap first, then crop it to the actual used height.
+        val tempBitmap = Bitmap.createBitmap(PREVIEW_WIDTH, 8000, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(tempBitmap)
         canvas.drawColor(Color.WHITE)
 
-        var yPos = MARGIN.toFloat() // Start with a top margin
+        var yPos = MARGIN.toFloat()
 
         fun drawText(text: String, paint: TextPaint, alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL) {
             val textLayout = StaticLayout.Builder.obtain(text, 0, text.length, paint, contentWidth)
@@ -59,9 +53,8 @@ object ReceiptPreviewGenerator {
                 .setLineSpacing(0f, 1.0f)
                 .setIncludePad(false)
                 .build()
-
             canvas.save()
-            canvas.translate(MARGIN.toFloat(), yPos) // Apply left margin
+            canvas.translate(MARGIN.toFloat(), yPos)
             textLayout.draw(canvas)
             canvas.restore()
             yPos += textLayout.height
@@ -74,9 +67,9 @@ object ReceiptPreviewGenerator {
         // --- Start Drawing Receipt --- //
 
         drawText("Bhootiya Fabric", titlePaint, Layout.Alignment.ALIGN_CENTER)
-        drawText("Collection", headerPaint, Layout.Alignment.ALIGN_CENTER)
-        drawText("Moti Ganj, Bakebar Road, Bharthana", headerPaint, Layout.Alignment.ALIGN_CENTER)
-        drawText("Ph: +91 82736 89065", headerPaint, Layout.Alignment.ALIGN_CENTER)
+        drawText("Collection", bodyPaint, Layout.Alignment.ALIGN_CENTER)
+        drawText("Moti Ganj, Bakebar Road, Bharthana", bodyPaint, Layout.Alignment.ALIGN_CENTER)
+        drawText("Ph: +91 82736 89065", bodyPaint, Layout.Alignment.ALIGN_CENTER)
         drawSpacer(10)
 
         val date = if (receipt.date.isNotBlank()) receipt.date else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
@@ -87,39 +80,33 @@ object ReceiptPreviewGenerator {
         drawText("Phone: ${receipt.customerPhone}", bodyPaint)
         drawText("Date: $date Time: $time", bodyPaint)
 
-        drawText("--------------------------------------------", bodyPaint, Layout.Alignment.ALIGN_CENTER)
+        val separator = "__________________________________________"
+        drawText(separator, bodyPaint, Layout.Alignment.ALIGN_CENTER)
 
-        // Items header - Final corrected formatting
-        val headerLine = String.format("%-20s %4s %8s %8s", "Item", "Qty", "Rate", "Amt")
+        // 42 chars total: Item (22) Qty (4) Rate (8) Amt (8)
+        val headerLine = String.format("%-22s%4s%8s%8s", "Item", "Qty", "Rate", "Amt")
         drawText(headerLine, bodyBoldPaint)
-        drawText("--------------------------------------------", bodyPaint, Layout.Alignment.ALIGN_CENTER)
+        drawText(separator, bodyPaint, Layout.Alignment.ALIGN_CENTER)
 
-        // Item rows - Final corrected formatting
         receipt.items.forEach { item ->
-            val itemName = if (item.name.length > 20) item.name.substring(0, 20) else item.name
-            // Using %d for quantity (integer)
-            val line = String.format("%-20s %4d %8s %8s", itemName, item.qty, "₹${item.price}", "₹${item.total}")
+            val itemName = if (item.name.length > 22) item.name.substring(0, 22) else item.name
+            val line = String.format("%-22s%4d%8s%8s", itemName, item.qty, "₹${item.price}", "₹${item.total}")
             drawText(line, bodyPaint)
         }
 
-        drawText("--------------------------------------------", bodyPaint, Layout.Alignment.ALIGN_CENTER)
+        drawText(separator, bodyPaint, Layout.Alignment.ALIGN_CENTER)
 
-        // Totals - Final corrected formatting for right alignment
-        val subtotalLine = String.format("%29s %11s", "Subtotal:", "₹${receipt.subtotal}")
-        drawText(subtotalLine, bodyPaint)
-
+        // Right-aligned totals
+        drawText(String.format("Subtotal: %12s", "₹${receipt.subtotal}"), bodyPaint, Layout.Alignment.ALIGN_OPPOSITE)
         if ((receipt.discount.toDoubleOrNull() ?: 0.0) > 0.0) {
-            val discountLine = String.format("%29s %11s", "Discount:", "₹${receipt.discount}")
-            drawText(discountLine, bodyPaint)
+            drawText(String.format("Discount: %12s", "₹${receipt.discount}"), bodyPaint, Layout.Alignment.ALIGN_OPPOSITE)
         }
-        val totalLine = String.format("%29s %11s", "Total:", "₹${receipt.total}")
-        drawText(totalLine, bodyBoldPaint)
+        drawText(String.format("Total: %12s", "₹${receipt.total}"), bodyBoldPaint, Layout.Alignment.ALIGN_OPPOSITE)
         drawSpacer(10)
 
         drawText("Payment: ${receipt.paymentMethod}", bodyPaint)
         drawSpacer(15)
 
-        // Barcode
         if (receipt.barcode.isNotBlank()) {
             try {
                 val pure = receipt.barcode.substringAfter(",")
@@ -140,7 +127,7 @@ object ReceiptPreviewGenerator {
         drawSpacer(15)
         drawText("Thank you, Visit Again!", bodyBoldPaint, Layout.Alignment.ALIGN_CENTER)
 
-        // --- End Drawing, Crop and Return --- //
+        // --- Crop bitmap to the actual height used ---
         yPos += MARGIN // Add bottom margin
         val finalHeight = yPos.toInt()
         val finalBitmap = Bitmap.createBitmap(tempBitmap, 0, 0, PREVIEW_WIDTH, finalHeight)
